@@ -5,9 +5,9 @@ import time
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
-# === AYARLAR ===
-MAX_WORKERS = 8             # Thread sayısı (çok yükseltme)
-DELAY = 0.12                # İstekler arası bekleme (saniye)
+# === GÜVENLİ AYARLAR ===
+MAX_WORKERS = 4             # Az thread
+DELAY = 0.35                # Yavaş ve güvenli
 CHARS = string.ascii_lowercase + string.digits
 
 lock = threading.Lock()
@@ -25,7 +25,7 @@ def is_valid_format(nick: str) -> bool:
 
 def generate_nick() -> str:
     while True:
-        if random.random() < 0.45:  # %45 ihtimalle _ koy
+        if random.random() < 0.45:
             pos = random.randint(1, 2)
             chars = [random.choice(CHARS) for _ in range(3)]
             chars.insert(pos, "_")
@@ -44,11 +44,11 @@ def check_username(username: str) -> bool:
         f"&context=Signup"
     )
     try:
-        r = requests.get(url, timeout=8)
+        r = requests.get(url, timeout=10)
         data = r.json()
-        return data.get("code") == 0  # 0 = Available
+        return data.get("code") == 0
     except Exception:
-        time.sleep(1)
+        time.sleep(1.5)
         return False
 
 def worker():
@@ -59,32 +59,29 @@ def worker():
 
         with lock:
             checked += 1
-            if checked % 25 == 0:
+            if checked % 20 == 0:
                 print(f"Kontrol: {checked} | Bulunan: {found_count}")
 
             if is_available:
                 found_count += 1
                 print(f"✅ AVAILABLE → {nick}   (Toplam: {found_count})")
                 
-                # Anında dosyaya kaydet
                 with open("available_nicks.txt", "a", encoding="utf-8") as f:
                     f.write(nick + "\n")
 
         time.sleep(DELAY)
 
 if __name__ == "__main__":
-    print("4 harfli available nick avı başladı...")
-    print("Bulduğu her nick'i anında kaydedecek, hiç durmayacak.")
+    print("4 harfli available nick avı başladı (Güvenli Mod)")
+    print("Bulduğu her nick anında kaydedilecek.")
     print("Durdurmak için Ctrl + C yap.\n")
 
-    # Dosyayı temiz başlat
     open("available_nicks.txt", "w").close()
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         for _ in range(MAX_WORKERS):
             executor.submit(worker)
 
-        # Sonsuz döngü (Ctrl+C ile çıkılır)
         try:
             while True:
                 time.sleep(1)
