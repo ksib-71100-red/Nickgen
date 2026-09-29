@@ -3,37 +3,30 @@ import random
 import string
 import time
 import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 
 # === AYARLAR ===
-TARGET = 5                  # Kaç tane available bulunca dursun
-MAX_WORKERS = 8             # Thread sayısı (çok yüksek yapma, 429 yersin)
-DELAY = 0.15                # Her istek arası bekleme (saniye)
+MAX_WORKERS = 8             # Thread sayısı (çok yükseltme)
+DELAY = 0.12                # İstekler arası bekleme (saniye)
 CHARS = string.ascii_lowercase + string.digits
 
 lock = threading.Lock()
-found = []
 checked = 0
-stop_flag = False
+found_count = 0
 
 def is_valid_format(nick: str) -> bool:
-    """Roblox username kurallarına uygun mu?"""
     if len(nick) != 4:
         return False
     if nick.startswith("_") or nick.endswith("_"):
         return False
-    if nick.count("_") > 1:
-        return False
-    if "__" in nick:
+    if nick.count("_") > 1 or "__" in nick:
         return False
     return all(c in CHARS + "_" for c in nick)
 
 def generate_nick() -> str:
-    """Geçerli formatta 4 harfli nick üretir (_ dahil olabilir)"""
     while True:
-        # %40 ihtimalle _ koy
-        if random.random() < 0.4:
-            pos = random.randint(1, 2)  # 1 veya 2. pozisyona koy (başa/sona koyma)
+        if random.random() < 0.45:  # %45 ihtimalle _ koy
+            pos = random.randint(1, 2)
             chars = [random.choice(CHARS) for _ in range(3)]
             chars.insert(pos, "_")
             nick = "".join(chars)
@@ -44,8 +37,6 @@ def generate_nick() -> str:
             return nick
 
 def check_username(username: str) -> bool:
-    """True = Available, False = Taken / Invalid"""
-    global checked
     url = (
         f"https://auth.roblox.com/v1/usernames/validate"
         f"?username={username}"
@@ -55,57 +46,50 @@ def check_username(username: str) -> bool:
     try:
         r = requests.get(url, timeout=8)
         data = r.json()
-        
-        with lock:
-            checked += 1
-            if checked % 20 == 0:
-                print(f"Kontrol edildi: {checked} | Bulunan: {len(found)}")
-
-        # code 0 = Username is valid (available)
-        if data.get("code") == 0:
-            return True
-        return False
+        return data.get("code") == 0  # 0 = Available
     except Exception:
         time.sleep(1)
         return False
 
 def worker():
-    global stop_flag
-    while not stop_flag and len(found) < TARGET:
+    global checked, found_count
+    while True:
         nick = generate_nick()
-        if check_username(nick):
-            with lock:
-                if nick not in found and len(found) < TARGET:
-                    found.append(nick)
-                    print(f"✅ AVAILABLE BULUNDU → {nick}")
-                    # Anında dosyaya yaz
-                    with open("available_nicks.txt", "a", encoding="utf-8") as f:
-                        f.write(nick + "\n")
-                    
-                    if len(found) >= TARGET:
-                        stop_flag = True
-                        break
+        is_available = check_username(nick)
+
+        with lock:
+            checked += 1
+            if checked % 25 == 0:
+                print(f"Kontrol: {checked} | Bulunan: {found_count}")
+
+            if is_available:
+                found_count += 1
+                print(f"✅ AVAILABLE → {nick}   (Toplam: {found_count})")
+                
+                # Anında dosyaya kaydet
+                with open("available_nicks.txt", "a", encoding="utf-8") as f:
+                    f.write(nick + "\n")
+
         time.sleep(DELAY)
 
 if __name__ == "__main__":
-    print("4 harfli available nick aranıyor...")
-    print("Uyarı: 4 harfli nick'ler neredeyse tamamen dolu. Uzun sürebilir.\n")
+    print("4 harfli available nick avı başladı...")
+    print("Bulduğu her nick'i anında kaydedecek, hiç durmayacak.")
+    print("Durdurmak için Ctrl + C yap.\n")
 
-    # Dosyayı temizle
+    # Dosyayı temiz başlat
     open("available_nicks.txt", "w").close()
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        futures = [executor.submit(worker) for _ in range(MAX_WORKERS)]
-        for f in as_completed(futures):
-            if stop_flag:
-                break
+        for _ in range(MAX_WORKERS):
+            executor.submit(worker)
 
-    print("\n" + "="*40)
-    if found:
-        print(f"{len(found)} available nick bulundu:")
-        for n in found:
-            print(f"  → {n}")
-        print(f"\nKaydedildi → available_nicks.txt")
-    else:
-        print("Hiç available nick bulunamadı.")
-    print("="*40)
+        # Sonsuz döngü (Ctrl+C ile çıkılır)
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            print(f"\n\nDurduruldu.")
+            print(f"Toplam kontrol: {checked}")
+            print(f"Bulunan available: {found_count}")
+            print("Kayıtlar → available_nicks.txt")
