@@ -6,8 +6,8 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 
 # === GÜVENLİ AYARLAR ===
-MAX_WORKERS = 4             # Az thread
-DELAY = 0.35                # Yavaş ve güvenli
+MAX_WORKERS = 4
+DELAY = 0.35
 CHARS = string.ascii_lowercase + string.digits
 
 lock = threading.Lock()
@@ -15,7 +15,8 @@ checked = 0
 found_count = 0
 
 def is_valid_format(nick: str) -> bool:
-    if len(nick) != 4:
+    length = len(nick)
+    if length not in (4, 5):
         return False
     if nick.startswith("_") or nick.endswith("_"):
         return False
@@ -24,14 +25,18 @@ def is_valid_format(nick: str) -> bool:
     return all(c in CHARS + "_" for c in nick)
 
 def generate_nick() -> str:
+    length = random.choice([4, 5])  # %50 4 harf, %50 5 harf
     while True:
-        if random.random() < 0.45:
-            pos = random.randint(1, 2)
-            chars = [random.choice(CHARS) for _ in range(3)]
+        if random.random() < 0.40:  # _ koyma ihtimali
+            if length == 4:
+                pos = random.randint(1, 2)
+            else:  # 5 harf
+                pos = random.randint(1, 3)
+            chars = [random.choice(CHARS) for _ in range(length - 1)]
             chars.insert(pos, "_")
             nick = "".join(chars)
         else:
-            nick = "".join(random.choice(CHARS) for _ in range(4))
+            nick = "".join(random.choice(CHARS) for _ in range(length))
         
         if is_valid_format(nick):
             return nick
@@ -64,15 +69,15 @@ def worker():
 
             if is_available:
                 found_count += 1
-                print(f"✅ AVAILABLE → {nick}   (Toplam: {found_count})")
+                print(f"✅ AVAILABLE → {nick}   ({len(nick)} harf)   (Toplam: {found_count})")
                 
                 with open("available_nicks.txt", "a", encoding="utf-8") as f:
-                    f.write(nick + "\n")
+                    f.write(f"{nick}\n")
 
         time.sleep(DELAY)
 
 if __name__ == "__main__":
-    print("4 harfli available nick avı başladı (Güvenli Mod)")
+    print("4 + 5 harfli available nick avı başladı (Güvenli Mod)")
     print("Bulduğu her nick anında kaydedilecek.")
     print("Durdurmak için Ctrl + C yap.\n")
 
